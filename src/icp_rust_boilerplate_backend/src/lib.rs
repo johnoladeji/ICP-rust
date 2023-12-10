@@ -18,9 +18,10 @@ struct PatientDetails {
     patient_history: String,
     doctor_name: String,
     created_at: u64,
-    updated_at: Option<u64>,
     next_appointment: u64,
     in_clinic: bool,
+    updated_at: Option<u64>,
+    
 }
 
 impl Storable for PatientDetails {
