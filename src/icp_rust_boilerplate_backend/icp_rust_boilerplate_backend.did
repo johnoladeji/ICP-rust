@@ -1,5 +1,9 @@
 type ChangeRecord = record { change_type : text; timestamp : nat64 };
-type Error = variant { NotFound : record { msg : text } };
+type Error = variant {
+  InvalidInput : record { msg : text };
+  NotFound : record { msg : text };
+  AuthenticationFailed;
+};
 type PatientDetails = record {
   id : nat64;
   patient_name : text;
@@ -9,6 +13,7 @@ type PatientDetails = record {
   in_clinic : bool;
   next_appointment : nat64;
   doctor_name : text;
+  admin_principal : text;
 };
 type PatientDetailsPayload = record {
   patient_name : text;
@@ -20,7 +25,7 @@ type PatientDetailsPayload = record {
 type Result = variant { Ok : PatientDetails; Err : Error };
 type Result_1 = variant { Ok : bool; Err : Error };
 service : {
-  add_patient : (PatientDetailsPayload) -> (opt PatientDetails);
+  add_patient : (PatientDetailsPayload) -> (Result);
   bulk_update_patients : (vec record { nat64; PatientDetailsPayload }) -> (
       vec Result,
     );
