@@ -122,7 +122,7 @@ fn search_doctors(query: String) -> Vec<PatientDetails> {
     })
 }
 
-fn is_valid_string(str: &String) -> bool {
+fn is_invalid_string(str: &String) -> bool {
     return str.trim().is_empty()
 }
 
@@ -136,7 +136,7 @@ fn is_caller_admin_principal(item: &PatientDetails) -> Result<(), Error> {
 
 #[ic_cdk::update]
 fn add_patient(item: PatientDetailsPayload) -> Result<PatientDetails, Error> {
-    if is_valid_string(&item.doctor_name) || is_valid_string(&item.patient_history) || is_valid_string(&item.patient_name){
+    if is_invalid_string(&item.doctor_name) || is_invalid_string(&item.patient_history) || is_invalid_string(&item.patient_name){
         return Err(Error::InvalidInput { msg: format!("Payload cannot contain empty strings or invalid string values such as ' '") })
     }
     if item.next_appointment <= time(){
@@ -171,7 +171,7 @@ fn update_patient(id: u64, payload: PatientDetailsPayload) -> Result<PatientDeta
         Some(mut item) => {
             is_caller_admin_principal(&item)?;
 
-            if is_valid_string(&payload.doctor_name) || is_valid_string(&payload.patient_history) || is_valid_string(&payload.patient_name){
+            if is_invalid_string(&payload.doctor_name) || is_invalid_string(&payload.patient_history) || is_invalid_string(&payload.patient_name){
                 return Err(Error::InvalidInput { msg: format!("Payload cannot contain empty strings or invalid string values such as ' '") })
             }
             if payload.next_appointment <= time(){
