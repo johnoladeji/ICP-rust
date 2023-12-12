@@ -2,7 +2,7 @@
 extern crate serde;
 
 use candid::{Decode, Encode};
-use ic_cdk::api::time;
+use ic_cdk::api::{time, caller};
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
 use ic_stable_structures::{BoundedStorable, Cell, DefaultMemoryImpl, StableBTreeMap, Storable};
 use std::{borrow::Cow, cell::RefCell};
@@ -14,6 +14,7 @@ type IdCell = Cell<u64, Memory>;
 #[derive(candid::CandidType, Clone, Serialize, Deserialize, Default)]
 struct PatientDetails {
     id: u64,
+    admin_principal: String,
     patient_name: String,
     patient_history: String,
     doctor_name: String,
@@ -121,8 +122,28 @@ fn search_doctors(query: String) -> Vec<PatientDetails> {
     })
 }
 
+fn is_valid_string(str: &String) -> bool {
+    return str.trim().is_empty()
+}
+
+fn is_caller_admin_principal(item: &PatientDetails) -> Result<(), Error> {
+    if item.admin_principal != caller().to_string(){
+        return Err(Error::AuthenticationFailed)
+    }else{
+        Ok(())
+    }
+}
+
 #[ic_cdk::update]
-fn add_patient(item: PatientDetailsPayload) -> Option<PatientDetails> {
+fn add_patient(item: PatientDetailsPayload) -> Result<PatientDetails, Error> {
+    if is_valid_string(&item.doctor_name) || is_valid_string(&item.patient_history) || is_valid_string(&item.patient_name){
+        return Err(Error::InvalidInput { msg: format!("Payload cannot contain empty strings or invalid string values such as ' '") })
+    }
+    if item.next_appointment <= time(){
+        return Err(Error::InvalidInput { 
+            msg: format!("Appointment date={} can't be lower than the current timestamp={}", item.next_appointment, time()
+        ) })
+    }
     let id = ID_COUNTER
         .with(|counter| {
             let current_value = *counter.borrow().get();
@@ -131,6 +152,7 @@ fn add_patient(item: PatientDetailsPayload) -> Option<PatientDetails> {
         .expect("cannot increment id counter");
     let storage_item = PatientDetails {
         id,
+        admin_principal: caller().to_string(),
         patient_name: item.patient_name,
         patient_history: item.patient_history,
         doctor_name: item.doctor_name,
@@ -140,13 +162,23 @@ fn add_patient(item: PatientDetailsPayload) -> Option<PatientDetails> {
         in_clinic: item.in_clinic,
     };
     do_insert_patient(&storage_item);
-    Some(storage_item)
+    Ok(storage_item)
 }
 
 #[ic_cdk::update]
 fn update_patient(id: u64, payload: PatientDetailsPayload) -> Result<PatientDetails, Error> {
     match STORAGE_PATIENT.with(|service| service.borrow_mut().get(&id)) {
         Some(mut item) => {
+            is_caller_admin_principal(&item)?;
+
+            if is_valid_string(&payload.doctor_name) || is_valid_string(&payload.patient_history) || is_valid_string(&payload.patient_name){
+                return Err(Error::InvalidInput { msg: format!("Payload cannot contain empty strings or invalid string values such as ' '") })
+            }
+            if payload.next_appointment <= time(){
+                return Err(Error::InvalidInput { 
+                    msg: format!("Appointment date={} can't be lower than the current timestamp={}", payload.next_appointment, time()
+                ) })
+            }
             item.patient_name = payload.patient_name;
             item.patient_history = payload.patient_history;
             item.doctor_name = payload.doctor_name;
@@ -181,6 +213,7 @@ fn patient_in_clinic(id: u64) -> Result<bool, Error> {
 fn mark_patient_in_clinic(id: u64) -> Result<PatientDetails, Error> {
     match STORAGE_PATIENT.with(|service| service.borrow_mut().get(&id)) {
         Some(mut item) => {
+            is_caller_admin_principal(&item)?;
             item.in_clinic = true;
             do_insert_patient(&item);
             Ok(item.clone())
@@ -194,6 +227,7 @@ fn mark_patient_in_clinic(id: u64) -> Result<PatientDetails, Error> {
 #[ic_cdk::update]
 fn mark_patient_not_in_clinic(id: u64) -> Result<PatientDetails, Error> {
     if let Some(mut item) = STORAGE_PATIENT.with(|service| service.borrow_mut().get(&id)) {
+        is_caller_admin_principal(&item)?;
         item.in_clinic = false;
         do_insert_patient(&item);
         Ok(item.clone())
@@ -208,6 +242,7 @@ fn mark_patient_not_in_clinic(id: u64) -> Result<PatientDetails, Error> {
 fn set_next_appointment(id: u64, next_appointment: u64) -> Result<PatientDetails, Error> {
     match STORAGE_PATIENT.with(|service| service.borrow_mut().get(&id)) {
         Some(mut item) => {
+            is_caller_admin_principal(&item)?;
             item.next_appointment = next_appointment;
             do_insert_patient(&item);
             Ok(item.clone())
@@ -226,6 +261,10 @@ fn do_insert_patient(item: &PatientDetails) {
 
 #[ic_cdk::update]
 fn delete_patient(id: u64) -> Result<PatientDetails, Error> {
+    let item = _get_patient(&id).ok_or_else(|| Error::NotFound {
+         msg: format!("Patient with id={} not found.", id)  
+        })?;
+    is_caller_admin_principal(&item)?;
     match STORAGE_PATIENT.with(|service| service.borrow_mut().remove(&id)) {
         Some(item) => Ok(item),
         None => Err(Error::NotFound {
@@ -240,6 +279,8 @@ fn delete_patient(id: u64) -> Result<PatientDetails, Error> {
 #[derive(candid::CandidType, Deserialize, Serialize)]
 enum Error {
     NotFound { msg: String },
+    InvalidInput{msg: String},
+    AuthenticationFailed
 }
 
 fn _get_patient(id: &u64) -> Option<PatientDetails> {
@@ -254,7 +295,7 @@ fn _get_patient(id: &u64) -> Option<PatientDetails> {
 struct ChangeRecord {
     timestamp: u64,
     change_type: String,
-}
+} 
 
 
 #[ic_cdk::query]
