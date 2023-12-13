@@ -21,16 +21,15 @@ struct PatientDetails {
     next_appointment: u64,
     in_clinic: bool,
     updated_at: Option<u64>,
-    
 }
 
 impl Storable for PatientDetails {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        Cow::Owned(Encode!(self).unwrap())
+    fn to_bytes(&self) -> Cow<[u8]> {
+        Cow::Owned(Encode!(self).expect("Serialization failed"))
     }
 
-    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
-        Decode!(bytes.as_ref(), Self).unwrap()
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        Decode!(bytes.as_ref(), Self).expect("Deserialization failed")
     }
 }
 
@@ -69,7 +68,7 @@ fn get_patient(id: u64) -> Result<PatientDetails, Error> {
     match _get_patient(&id) {
         Some(item) => Ok(item),
         None => Err(Error::NotFound {
-            msg: format!("an item with id={} not found", id),
+            msg: format!("An item with id={} not found", id),
         }),
     }
 }
